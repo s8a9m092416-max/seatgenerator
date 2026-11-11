@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'">
+<title>分組座位產生器</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f0f4f8;
+    --ink: #1e293b;
+    --muted: #526278;
+    --line: #69788c;
+    --blue: #235fc6;
+    --white: #fff;
+    font-family: system-ui, "Microsoft JhengHei", "PingFang TC", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--page); color: var(--ink); }
+  main { max-width: 1344px; margin: auto; padding: 32px; }
+  h1 { margin: 0 0 6px; text-align: center; font-size: clamp(26px, 4vw, 32px); }
+  h2 { margin: 0; font-size: 23px; }
+  h3 { margin: 0 0 12px; font-size: 17px; font-weight: 600; }
+  p { margin: 0; }
+  .subtitle { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 26px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 26px; align-items: start; }
+  .panel { background: var(--white); border-radius: 14px; padding: 24px; box-shadow: 0 5px 15px #1e293b0c; }
+  .range { border-radius: 9px; padding: 16px; background: var(--page); margin-bottom: 16px; }
+  .range-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  label, .label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
+  input, select, button { font: inherit; }
+  input, select { width: 100%; min-width: 0; padding: 9px 11px; color: var(--ink); background: var(--white); border: 1px solid var(--line); border-radius: 8px; }
+  button { border: 0; border-radius: 8px; cursor: pointer; }
+  button:disabled { cursor: default; }
+  :focus-visible { outline: 3px solid #e29322; outline-offset: 2px; }
+  .action { width: 100%; padding: 11px 14px; background: var(--blue); color: var(--white); font-weight: 650; }
+  .secondary { background: var(--muted); color: var(--white); }
+  .range-hint { margin-top: 8px; }
+  .front { max-width: 580px; margin: 0 auto 14px; text-align: center; font-weight: 650; background: var(--ink); color: var(--white); padding: 10px; border-radius: 8px; }
+  #randomize { margin-top: 13px; }
+  #seating-chart { max-width: 580px; margin-inline: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(10px, 2vw, 24px); align-items: start; }
+  .seat-group { min-width: 0; }
+  .group-label { display: block; margin-bottom: 5px; text-align: center; color: var(--ink); font-size: clamp(12px, 1.5vw, 15px); font-weight: 650; }
+  .seat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; padding: 1px; border: 1px solid var(--line); border-radius: 7px; background: var(--line); }
+  .seat { min-width: 0; aspect-ratio: 1.26; display: grid; place-items: center; padding: 0; border-radius: 0; color: var(--ink); background: var(--white); font-size: clamp(16px, 3vw, 30px); font-weight: 750; }
+  .seat:disabled { opacity: 1; }
+  .seat.empty { color: #758397; background: #f7f9fc; font-weight: 500; }
+  .seat:not(:disabled):hover, .seat.selected { background: #eaf2ff; }
+  .seat:focus-visible, .seat.selected { z-index: 1; outline-offset: -3px; }
+  .seat.selected { outline: 3px solid var(--blue); }
+  .seat-group.unused .group-label { color: var(--muted); }
+  .seat-group.unused .seat-grid { border-color: #aeb9c7; background: #aeb9c7; }
+  .seat-group.extra .seat-grid { border-style: dashed; }
+  .chart-hint { margin-top: 12px; text-align: center; }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .settings { position: relative; }
+  #settings-btn { width: 36px; height: 36px; background: var(--page); color: var(--ink); font-size: 24px; line-height: 1; }
+  #settings-menu { position: absolute; z-index: 2; right: 0; top: 44px; width: max-content; padding: 6px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 5px 15px #1e293b20; }
+  #show-hidden { color: var(--ink); background: var(--page); padding: 8px 10px; font-size: 14px; }
+  #show-hidden:disabled { color: var(--muted); }
+  #constraint-form { display: grid; gap: 12px; }
+  #position-hint { padding: 10px; background: var(--page); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+  .rules { margin-top: 20px; }
+  .hint { color: var(--muted); font-size: 13px; line-height: 1.55; }
+  #constraints-list { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+  .rule { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid #a4afbd; border-radius: 8px; font-size: 14px; }
+  .rule-actions { display: flex; flex-shrink: 0; gap: 5px; }
+  .rule-actions button { padding: 5px 8px; font-size: 13px; border-radius: 5px; }
+  .status { margin-top: 10px; font-size: 14px; color: #1849a0; line-height: 1.5; }
+  .status:empty { margin: 0; }
+  .status.error { color: #a42328; }
+  #storage-warning { margin-top: 16px; text-align: center; }
+  @media (max-width: 850px) {
+    main { padding: 20px; }
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .seat { font-size: clamp(16px, 4vw, 30px); }
+  }
+  @media (max-width: 430px) {
+    main { padding: 14px; }
+    .panel { padding: 14px; }
+    .range { padding: 11px; }
+  }
+  @media print {
+    body { background: white; }
+    main { max-width: none; padding: 0; }
+    .layout { display: block; }
+    .panel { box-shadow: none; padding: 0; }
+    .range, .controls, .status, .subtitle, .chart-hint, #randomize { display: none !important; }
+    #seating-chart { break-inside: avoid; }
+    .seat-grid { print-color-adjust: exact; }
+    .front { color: #1e293b; background: white; border: 2px solid #1e293b; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>分組座位產生器</h1>
+  <p class="subtitle"></p>
+  <div class="layout">
+    <section class="panel" aria-label="座位表">
+      <section class="range" aria-labelledby="range-title">
+        <h3 id="range-title">學生人數設定</h3>
+        <div class="range-fields">
+          <div>
+            <label for="start-number">起始號碼</label>
+            <input type="number" id="start-number" min="1" max="30" step="1" value="1" aria-describedby="range-status" required>
+          </div>
+          <div>
+            <label for="end-number">結束號碼</label>
+            <input type="number" id="end-number" min="1" max="30" step="1" value="28" aria-describedby="range-status" required>
+          </div>
+        </div>
+        <p class="hint range-hint">輸入號碼後會自動套用。</p>
+        <p id="range-status" class="status" role="status"></p>
+      </section>
+      <div class="front">黑板</div>
+      <div id="seating-chart" role="group" aria-label="教室分組座位，前排 2 組、中排 2 組、後排 3 組"></div>
+      <p class="hint chart-hint">每個使用中的組別安排 3 至 4 人。超過28人時，前方會開放加座。</p>
+      <p id="migration-note" class="status" role="status" hidden>已帶入舊版條件。請核對指定座位的新位置，再重新排位。</p>
+      <button type="button" id="randomize" class="action">🎲 隨機排座位</button>
+      <p id="chart-status" class="status" role="status"></p>
+    </section>
+    <section class="panel controls" aria-labelledby="rule-title">
+      <div class="panel-head">
+        <h2 id="rule-title">座位條件設定</h2>
+        <div class="settings">
+          <button type="button" id="settings-btn" aria-label="開啟設定" aria-expanded="false" aria-controls="settings-menu">⋯</button>
+          <div id="settings-menu" hidden>
+            <button type="button" id="show-hidden">顯示隱藏條件</button>
+          </div>
+        </div>
+      </div>
+      <form id="constraint-form">
+        <div>
+          <label for="student-number">學生號碼</label>
+          <input type="number" id="student-number" min="1" max="30" step="1" required placeholder="例如：15">
+        </div>
+        <div>
+          <label for="constraint-type">條件類型</label>
+          <select id="constraint-type">
+            <option value="not_near">不能靠近</option>
+            <option value="fixed_position">指定座位</option>
+          </select>
+        </div>
+        <div id="target-field">
+          <label for="target-number">目標號碼</label>
+          <input type="number" id="target-number" min="1" max="30" step="1" required placeholder="例如：7">
+        </div>
+        <div id="position-field" hidden>
+          <p class="label">指定座位</p>
+          <p id="position-hint" role="status"></p>
+        </div>
+        <button type="submit" class="action">＋ 新增條件</button>
+      </form>
+      <p id="rule-status" class="status" role="status"></p>
+      <div class="rules">
+        <h3>已設定條件</h3>
+        <p class="hint"></p>
+        <ul id="constraints-list"></ul>
+        <p id="empty-rules" class="hint" hidden></p>
+      </div>
+    </section>
+  </div>
+  <p id="storage-warning" class="status error" role="status" hidden>瀏覽器目前無法儲存設定。仍可在這次開啟時排座位，關閉後資料會清除。</p>
+  <noscript>請在瀏覽器中啟用 JavaScript，才能設定條件與隨機排座位。</noscript>
+</main>
+<script>
+"use strict";
+
+// 原版由 Canva Element SDK 管理人數，Data SDK 管理條件。
+// 本檔以瀏覽器 localStorage 保存設定，座位演算全在此頁完成。
+const GROUP_LOCATIONS = [[0, 0], [0, 2], [1, 0], [1, 2], [2, 0], [2, 1], [2, 2]];
+const GROUP_SIZE = 4;
+const MIN_GROUP_SIZE = 3;
+const REGULAR_CAPACITY = GROUP_LOCATIONS.length * GROUP_SIZE;
+const EXTRA_GROUP = GROUP_LOCATIONS.length;
+const EXTRA_CAPACITY = 2;
+const SIZE = REGULAR_CAPACITY + EXTRA_CAPACITY;
+const GROUPS = [...GROUP_LOCATIONS, [0, 1]].map(([row, column], index) => ({
+  row,
+  column,
+  index,
+  name: index === EXTRA_GROUP ? "前方加座" : `第 ${index + 1} 組`,
+  positions: Array.from({length: index === EXTRA_GROUP ? EXTRA_CAPACITY : GROUP_SIZE},
+    (_, seat) => index * GROUP_SIZE + seat)
+}));
+const positions = GROUPS.flatMap(group => group.positions);
+const seatLocations = GROUPS.flatMap(group => group.positions.map((_, seat) => ({
+  group: group.index,
+  row: group.row * 2 + Math.floor(seat / 2),
+  column: group.column * 2 + seat % 2
+})));
+const STORAGE_KEY = "seatgenerator-offline-groups-v1";
+const LEGACY_STORAGE_KEY = "seatgenerator-offline-v1";
+const defaultRules = [[12, 8], [18, 21], [6, 26], [21, 19], [14, 1], [1, 7], [14, 22]];
+const byId = id => document.getElementById(id);
+let migrated = false;
+
+function readState() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    const legacy = saved ? null : localStorage.getItem(LEGACY_STORAGE_KEY);
+    const data = JSON.parse(saved || legacy || "null");
+    if (data && validNumber(data.start) && validNumber(data.end) &&
+        data.start <= data.end && Array.isArray(data.rules) && Array.isArray(data.seats) &&
+        data.seats.length === SIZE) {
+      if (!legacy) return data;
+
+      // 舊版依畫面順序對應新版，優先把已有指定條件的位置留在 28 個常設座位。
+      const regularOrder = positions.slice(0, REGULAR_CAPACITY).sort((first, second) =>
+        seatLocations[first].row - seatLocations[second].row ||
+        seatLocations[first].column - seatLocations[second].column
+      );
+      const fixed = new Set(data.rules.filter(rule => rule.type === "fixed_position")
+        .map(rule => rule.position));
+      const fromBack = [...positions].reverse();
+      const oldExtra = [...fromBack.filter(position => !fixed.has(position)),
+        ...fromBack.filter(position => fixed.has(position))].slice(0, EXTRA_CAPACITY).reverse();
+      const order = [];
+      positions.filter(position => !oldExtra.includes(position))
+        .forEach((position, index) => { order[position] = regularOrder[index]; });
+      oldExtra.forEach((position, index) => { order[position] = GROUPS[EXTRA_GROUP].positions[index]; });
+      data.rules = data.rules.map(rule => rule.type === "fixed_position"
+        ? {...rule, position: order[rule.position]}
+        : rule);
+      data.seats.fill(null);
+      migrated = true;
+      return data;
+    }
+  } catch {
+    byId("storage-warning").hidden = false;
+  }
+  return {
+    start: 1,
+    end: REGULAR_CAPACITY,
+    rules: defaultRules.map(([student, target]) => ({type: "not_near", student, target, hidden: false})),
+    seats: Array(SIZE).fill(null)
+  };
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    byId("storage-warning").hidden = false;
+  }
+}
+
+function validNumber(number) {
+  return Number.isInteger(number) && number >= 1 && number <= SIZE;
+}
+
+function enrolled(number, {start, end}) {
+  return number >= start && number <= end;
+}
+
+function shuffle(array) {
+  for (let index = array.length - 1; index > 0; index--) {
+    const other = Math.floor(Math.random() * (index + 1));
+    [array[index], array[other]] = [array[other], array[index]];
+  }
+  return array;
+}
+
+function neighboring(first, second) {
+  const a = seatLocations[first];
+  const b = seatLocations[second];
+  return Math.abs(a.row - b.row) <= 1 && Math.abs(a.column - b.column) <= 1;
+}
+
+function arrangeSeats(settings) {
+  const students = Array.from({length: settings.end - settings.start + 1}, (_, index) => settings.start + index);
+  const extraCount = Math.max(0, students.length - REGULAR_CAPACITY);
+  const regularCount = students.length - extraCount;
+  const fewestGroups = Math.ceil(regularCount / GROUP_SIZE);
+  const mostGroups = Math.min(EXTRA_GROUP, Math.floor(regularCount / MIN_GROUP_SIZE));
+  if (fewestGroups > mostGroups) {
+    throw new Error(`目前有 ${students.length} 人，無法分成每組 3 至 4 人。請調整號碼範圍。`);
+  }
+
+  const assignment = new Map();
+  const seating = Array(SIZE).fill(null);
+  const neighbors = new Map(students.map(student => [student, new Set()]));
+  const fixedCounts = GROUPS.map(() => 0);
+
+  for (const rule of settings.rules) {
+    // 隱藏只影響清單顯示。換用不同號碼範圍時，範圍外的條件暫不套用。
+    if (!neighbors.has(rule.student)) continue;
+    if (rule.type === "fixed_position") {
+      if (assignment.has(rule.student) || seating[rule.position] !== null) {
+        throw new Error("指定座位有衝突，請檢查是否有重複指定。");
+      }
+      fixedCounts[seatLocations[rule.position].group]++;
+      assignment.set(rule.student, rule.position);
+      seating[rule.position] = rule.student;
+    } else if (neighbors.has(rule.target)) {
+      neighbors.get(rule.student).add(rule.target);
+      neighbors.get(rule.target).add(rule.student);
+    }
+  }
+
+  if (fixedCounts[EXTRA_GROUP] > extraCount) {
+    throw new Error("指定的加座超過本次可用名額，請調整加座的指定條件。");
+  }
+  const fixedGroups = GROUPS.slice(0, EXTRA_GROUP).filter(group => fixedCounts[group.index] > 0);
+  if (fixedGroups.length > mostGroups) {
+    throw new Error("指定座位分散在太多組，請調整指定座位，讓每個使用的組別至少有 3 人。");
+  }
+
+  for (const [student, position] of assignment) {
+    for (const target of neighbors.get(student)) {
+      if (assignment.has(target) && neighboring(position, assignment.get(target))) {
+        throw new Error(`${student} 號和 ${target} 號的指定座位相鄰，請調整其中一個條件。`);
+      }
+    }
+  }
+
+  const movable = shuffle(students.filter(student => !assignment.has(student)));
+  const constrained = movable.filter(student => neighbors.get(student).size > 0);
+  const unrestricted = movable.filter(student => neighbors.get(student).size === 0);
+  const minimums = GROUPS.map(group => group.index === EXTRA_GROUP ? extraCount : MIN_GROUP_SIZE);
+  const maximums = GROUPS.map(group => group.index === EXTRA_GROUP ? extraCount : GROUP_SIZE);
+  const regularGroups = GROUPS.slice(0, EXTRA_GROUP);
+  const groupChoices = [];
+  for (let mask = 1; mask < 2 ** EXTRA_GROUP; mask++) {
+    const chosen = regularGroups.filter(group => mask & (1 << group.index));
+    if (chosen.length >= fewestGroups && chosen.length <= mostGroups &&
+        fixedGroups.every(group => chosen.includes(group))) {
+      groupChoices.push(chosen);
+    }
+  }
+  groupChoices.sort((a, b) => b.length - a.length);
+  let remainingBudget = 36000;
+  let hitLimit = false;
+
+  // 優先使用較多組，並由靠近黑板的位置開始選。若有衝突，再試其他組合。
+  for (const chosen of groupChoices) {
+    const activeGroups = extraCount ? [...chosen, GROUPS[EXTRA_GROUP]] : chosen;
+    const counts = [...fixedCounts];
+    const needed = activeGroups.reduce((total, group) =>
+      total + Math.max(0, minimums[group.index] - counts[group.index]), 0);
+    if (needed > movable.length) continue;
+
+    const free = shuffle(activeGroups.flatMap(group => group.positions)
+      .filter(position => seating[position] === null));
+    const attemptBudget = Math.min(9000, remainingBudget);
+    let budget = attemptBudget;
+
+    function place(remaining, seatsNeeded) {
+      if (remaining.length === 0) return true;
+      if (--budget < 0) return false;
+
+      // 先排可選位置最少的學生，並留足其他組達到最低人數所需的名額。
+      let selected;
+      let options;
+      const leftAfterPlacement = remaining.length + unrestricted.length - 1;
+      for (const student of remaining) {
+        const assignedNeighbors = [...neighbors.get(student)]
+          .filter(target => assignment.has(target))
+          .map(target => assignment.get(target));
+        const available = free.filter(position => {
+          const {group} = seatLocations[position];
+          const fillsMinimum = counts[group] < minimums[group];
+          return seating[position] === null && counts[group] < maximums[group] &&
+            leftAfterPlacement >= seatsNeeded - Number(fillsMinimum) &&
+            assignedNeighbors.every(other => !neighboring(position, other));
+        });
+        if (available.length === 0) return false;
+        if (!options || available.length < options.length) {
+          selected = student;
+          options = available;
+        }
+      }
+
+      const rest = remaining.filter(student => student !== selected);
+      for (const position of options) {
+        const {group} = seatLocations[position];
+        const fillsMinimum = counts[group] < minimums[group];
+        seating[position] = selected;
+        counts[group]++;
+        assignment.set(selected, position);
+        if (place(rest, seatsNeeded - Number(fillsMinimum))) return true;
+        assignment.delete(selected);
+        counts[group]--;
+        seating[position] = null;
+        if (budget < 0) break;
+      }
+      return false;
+    }
+
+    if (place(constrained, needed)) {
+      let next = 0;
+      for (const group of activeGroups) {
+        const open = free.filter(position =>
+          seatLocations[position].group === group.index && seating[position] === null);
+        const deficit = Math.max(0, minimums[group.index] - counts[group.index]);
+        open.slice(0, deficit).forEach(position => { seating[position] = unrestricted[next++]; });
+      }
+      // 加座人數等於該組最低名額，剩餘學生只填入常設組別。
+      const fillable = free.filter(position =>
+        seatLocations[position].group !== EXTRA_GROUP && seating[position] === null);
+      fillable.slice(0, unrestricted.length - next)
+        .forEach(position => { seating[position] = unrestricted[next++]; });
+      return seating;
+    }
+    remainingBudget -= attemptBudget - Math.max(0, budget);
+    if (budget < 0) hitLimit = true;
+    if (remainingBudget === 0) {
+      hitLimit = true;
+      break;
+    }
+  }
+
+  throw new Error(hitLimit
+    ? "這次未找到符合所有條件的座位表。可再試一次，或減少條件。"
+    : "目前沒有符合所有條件的排法，請調整座位條件。");
+}
+
+const state = readState();
+const typeSelect = byId("constraint-type");
+const studentInput = byId("student-number");
+const targetInput = byId("target-number");
+const startInput = byId("start-number");
+const endInput = byId("end-number");
+const menu = byId("settings-menu");
+const settingsButton = byId("settings-btn");
+const showHiddenButton = byId("show-hidden");
+let selectedPosition = null;
+let rangeTimer;
+
+function message(id, text, error = false) {
+  const status = byId(id);
+  status.classList.toggle("error", error);
+  status.textContent = text;
+}
+
+function positionLabel(position) {
+  const group = GROUPS[seatLocations[position].group];
+  return `${group.name}第 ${group.positions.indexOf(position) + 1} 席`;
+}
+
+function renderSeats() {
+  const picking = typeSelect.value === "fixed_position";
+  const hasResult = state.seats.some(number => number != null);
+  const extraCount = Math.max(0, state.end - state.start + 1 - REGULAR_CAPACITY);
+  groupViews.forEach(({group, card, label}) => {
+    const count = group.positions.filter(position => state.seats[position] != null).length;
+    const unused = hasResult && count === 0;
+    card.hidden = group.index === EXTRA_GROUP && extraCount === 0;
+    card.classList.toggle("unused", unused);
+    label.textContent = group.name + (hasResult ? (unused ? " · 未使用" : ` · ${count} 人`) : "");
+  });
+  seatButtons.forEach((seat, index) => {
+    const number = state.seats[index];
+    seat.textContent = number ?? "–";
+    seat.disabled = !picking || (index >= REGULAR_CAPACITY && extraCount === 0);
+    seat.classList.toggle("empty", number == null);
+    seat.classList.toggle("selected", picking && index === selectedPosition);
+    seat.setAttribute("aria-label", `${positionLabel(index)}，${number == null ? "空位" : number + " 號"}`);
+    if (picking) seat.setAttribute("aria-pressed", String(index === selectedPosition));
+    else seat.removeAttribute("aria-pressed");
+  });
+  byId("position-hint").textContent = selectedPosition === null
+    ? "請點擊座位表上的座位。每組的座位從左上往右，再排到下一列。"
+    : `已選擇${positionLabel(selectedPosition)}`;
+}
+
+function ruleButton(text, label, action) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary";
+  button.textContent = text;
+  button.setAttribute("aria-label", `${text} ${label}`);
+  button.addEventListener("click", action);
+  return button;
+}
+
+function renderRules() {
+  const list = byId("constraints-list");
+  const emptyRules = byId("empty-rules");
+  const hiddenCount = state.rules.filter(rule => rule.hidden).length;
+  showHiddenButton.disabled = hiddenCount === 0;
+  showHiddenButton.textContent = hiddenCount ? `顯示隱藏條件（${hiddenCount}）` : "目前沒有隱藏條件";
+  list.replaceChildren();
+
+  for (const rule of state.rules) {
+    if (rule.hidden) continue;
+    const item = document.createElement("li");
+    item.className = "rule";
+    const label = document.createElement("span");
+    label.textContent = rule.type === "fixed_position"
+      ? `${rule.student} 號固定在${positionLabel(rule.position)}`
+      : `${rule.student} 號不能靠近 ${rule.target} 號`;
+    const actions = document.createElement("div");
+    actions.className = "rule-actions";
+    actions.append(
+      ruleButton("隱藏", label.textContent, () => {
+        rule.hidden = true;
+        saveState();
+        renderRules();
+        message("rule-status", "條件已隱藏，仍會套用於排位。");
+      }),
+      ruleButton("刪除", label.textContent, () => {
+        state.rules.splice(state.rules.indexOf(rule), 1);
+        saveState();
+        renderRules();
+        message("rule-status", "條件已刪除，下次排位時生效。");
+      })
+    );
+    item.append(label, actions);
+    list.append(item);
+  }
+  emptyRules.hidden = list.childElementCount > 0;
+  emptyRules.textContent = hiddenCount ? "所有條件目前都已隱藏。" : "尚未設定任何條件。";
+}
+
+function showMenu(visible) {
+  menu.hidden = !visible;
+  settingsButton.setAttribute("aria-expanded", String(visible));
+}
+
+function updateConstraintForm() {
+  const picking = typeSelect.value === "fixed_position";
+  byId("target-field").hidden = picking;
+  targetInput.disabled = picking;
+  byId("position-field").hidden = !picking;
+  selectedPosition = null;
+  renderSeats();
+}
+
+const seatButtons = positions.map(index => {
+  const seat = document.createElement("button");
+  seat.type = "button";
+  seat.className = "seat";
+  seat.addEventListener("click", () => {
+    if (typeSelect.value !== "fixed_position") return;
+    selectedPosition = index;
+    renderSeats();
+  });
+  return seat;
+});
+const groupViews = GROUPS.map(group => {
+  const card = document.createElement("section");
+  card.className = group.index === EXTRA_GROUP ? "seat-group extra" : "seat-group";
+  card.style.gridArea = `${group.row + 1} / ${group.column + 1}`;
+  const label = document.createElement("h3");
+  label.id = `group-label-${group.index + 1}`;
+  label.className = "group-label";
+  card.setAttribute("aria-labelledby", label.id);
+  const grid = document.createElement("div");
+  grid.className = "seat-grid";
+  grid.append(...group.positions.map(position => seatButtons[position]));
+  card.append(label, grid);
+  return {group, card, label};
+});
+byId("seating-chart").append(...groupViews.map(({card}) => card));
+startInput.value = state.start;
+endInput.value = state.end;
+updateConstraintForm();
+renderRules();
+if (migrated) {
+  saveState();
+  byId("migration-note").hidden = !state.rules.some(rule => rule.type === "fixed_position");
+}
+
+typeSelect.addEventListener("change", updateConstraintForm);
+settingsButton.addEventListener("click", () => showMenu(menu.hidden));
+document.addEventListener("click", event => {
+  if (!menu.contains(event.target) && !settingsButton.contains(event.target)) showMenu(false);
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !menu.hidden) {
+    showMenu(false);
+    settingsButton.focus();
+  }
+});
+showHiddenButton.addEventListener("click", () => {
+  state.rules.forEach(rule => { rule.hidden = false; });
+  saveState();
+  renderRules();
+  showMenu(false);
+  settingsButton.focus();
+  message("rule-status", "已重新顯示所有隱藏條件。");
+});
+
+function applyRange() {
+  clearTimeout(rangeTimer);
+  const start = startInput.valueAsNumber;
+  const end = endInput.valueAsNumber;
+  if (!validNumber(start) || !validNumber(end) || start > end) {
+    message("range-status", "請輸入 1 到 30 的整數，起始號碼須小於或等於結束號碼。", true);
+    return false;
+  }
+
+  const summary = `已套用 ${start} 到 ${end} 號，共 ${end - start + 1} 人。`;
+  if (byId("range-status").textContent !== summary) message("range-status", summary);
+  if (start === state.start && end === state.end) return true;
+
+  state.start = start;
+  state.end = end;
+  state.seats.fill(null);
+  selectedPosition = null;
+  saveState();
+  renderSeats();
+  message("chart-status", "");
+  return true;
+}
+
+for (const input of [startInput, endInput]) {
+  input.addEventListener("input", () => {
+    clearTimeout(rangeTimer);
+    rangeTimer = setTimeout(applyRange, 300);
+  });
+  input.addEventListener("change", applyRange);
+  input.addEventListener("keydown", event => {
+    if (event.key === "Enter") applyRange();
+  });
+}
+
+byId("constraint-form").addEventListener("submit", event => {
+  event.preventDefault();
+  if (!applyRange()) {
+    endInput.focus();
+    return;
+  }
+  const type = typeSelect.value;
+  const student = studentInput.valueAsNumber;
+  const target = targetInput.valueAsNumber;
+  const fail = text => message("rule-status", text, true);
+
+  if (!enrolled(student, state)) {
+    fail(`學生號碼必須在 ${state.start} 到 ${state.end} 之間。`);
+    return;
+  }
+  if (type === "fixed_position") {
+    if (selectedPosition === null) {
+      fail("請先點擊座位表選擇座位。");
+      return;
+    }
+    const fixed = state.rules.filter(rule => rule.type === "fixed_position");
+    if (fixed.some(rule => rule.student === student)) {
+      fail(`${student} 號已有指定座位。請先刪除原條件。`);
+      return;
+    }
+    if (fixed.some(rule => rule.position === selectedPosition)) {
+      fail("這個座位已有指定的學生。請選擇另一個座位。");
+      return;
+    }
+    state.rules.push({type, student, position: selectedPosition, hidden: false});
+  } else {
+    if (!enrolled(target, state) || student === target) {
+      fail(`請選擇另一位 ${state.start} 到 ${state.end} 號的學生作為目標。`);
+      return;
+    }
+    if (state.rules.some(rule => rule.type === "not_near" &&
+        ((rule.student === student && rule.target === target) || (rule.student === target && rule.target === student)))) {
+      fail("這兩位學生已有「不能靠近」的條件。");
+      return;
+    }
+    state.rules.push({type, student, target, hidden: false});
+  }
+  saveState();
+  event.currentTarget.reset();
+  updateConstraintForm();
+  renderRules();
+  message("rule-status", "條件已新增，下次排位時生效。");
+});
+
+byId("randomize").addEventListener("click", () => {
+  if (!applyRange()) {
+    endInput.focus();
+    return;
+  }
+  try {
+    state.seats = arrangeSeats(state);
+    saveState();
+    renderSeats();
+    byId("migration-note").hidden = true;
+    const active = GROUPS.slice(0, EXTRA_GROUP).filter(group =>
+      group.positions.some(position => state.seats[position] != null)).length;
+    const total = state.end - state.start + 1;
+    const extra = Math.max(0, total - REGULAR_CAPACITY);
+    const extraMessage = extra ? `，另有 ${extra} 人使用前方加座` : "";
+    message("chart-status", `已完成排位，共 ${total} 人，使用 ${active} 組${extraMessage}。`);
+  } catch (error) {
+    message("chart-status", error.message, true);
+  }
+});
+</script>
+</body>
+</html>
